@@ -1,14 +1,16 @@
-# Virtual environment
+# Virtual env
 .venv/
-
-# Python cache
 __pycache__/
-*.pyc
 
-# IDE-specific
+# IDE
 .idea/
-.vscode/
 
-# OS-specific files
-.DS_Store
-Thumbs.db
+# Datasets
+tensorflow_datasets/
+
+# Models
+models/*.h5
+models/*.ckpt
+
+# Logs
+*.log
