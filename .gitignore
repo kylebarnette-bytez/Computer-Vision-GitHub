@@ -1,16 +1,34 @@
-# Virtual env
+# Virtual environments
 .venv/
+venv/
+ENV/
+env/
+
+# Python cache
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# IDE
+# IDE (PyCharm, VSCode, etc.)
 .idea/
+.vscode/
 
-# Datasets
+# Datasets (TensorFlow / custom)
 tensorflow_datasets/
+datasets/
 
-# Models
-models/*.h5
-models/*.ckpt
+# Models (all common formats)
+models/
+*.h5
+*.ckpt
+*.keras
+*.pb
+*.tflite
 
 # Logs
 *.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
