@@ -1,0 +1,37 @@
+from src.model import build_model, compile_model, train_model
+
+# Load datasets
+from src.data_preprocessing import get_datasets
+train_ds, val_ds, test_ds, class_names = get_datasets(batch_size=32)
+
+# Build baseline model
+model = build_model(num_classes=len(class_names), use_augmentation=True)
+model = compile_model(model, learning_rate=1e-4)
+
+# Train baseline for 5 epochs
+history = train_model(
+    model,
+    train_ds,
+    val_ds,
+    epochs=5,
+    save_path="models/mobilenetv2_food101_baseline.h5"
+)
+
+# --- Fine-tuning ---
+# Unfreeze part of base model
+fine_tune_at = 100
+model.layers[2].trainable = True   # base_model inside Sequential
+for layer in model.layers[2].layers[:fine_tune_at]:
+    layer.trainable = False
+
+# Re-compile with smaller LR
+model = compile_model(model, learning_rate=1e-5)
+
+# Continue training
+history_fine = train_model(
+    model,
+    train_ds,
+    val_ds,
+    epochs=15,
+    save_path="models/mobilenetv2_food101_finetuned.h5"
+)
