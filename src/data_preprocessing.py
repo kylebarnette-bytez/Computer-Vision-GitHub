@@ -81,6 +81,13 @@ def get_datasets(batch_size=32):
     class_names = info.features["label"].names
     return train_ds, test_ds, class_names
 
+def get_augmentation_layer():
+    return tf.keras.Sequential([
+        layers.RandomFlip("horizontal"),
+        layers.RandomRotation(0.1),
+        layers.RandomZoom(0.1),
+        layers.RandomContrast(0.1),
+    ], name="data_augmentation")
 
 # =========================
 # Quick debug (run directly)

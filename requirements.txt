@@ -5,3 +5,8 @@ numpy>=1.26.4
 matplotlib>=3.9.2
 flask>=3.0.0
 requests>=2.32.0
+fastapi
+uvicorn
+python-multipart
+pillow
+scikit-learn
