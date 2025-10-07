@@ -52,7 +52,7 @@ def load_data(batch_size=32):
 # =========================
 if __name__ == "__main__":
     train_ds, test_ds, info = load_data()
-    print("✅ Preprocessing pipeline ready")
+    print(" Preprocessing pipeline ready")
     print("Classes:", info.features["label"].names[:10])
 
     # Take multiple batches to verify iteration

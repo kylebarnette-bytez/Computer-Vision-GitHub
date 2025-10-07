@@ -9,7 +9,7 @@ model = build_model(num_classes=len(class_names))
 model = compile_model(model)
 
 # Train 1 epoch just to check pipeline works
-print("🚀 Starting quick training test (1 epoch)...")
+print(" Starting quick training test (1 epoch)...")
 history = train_model(model, train_ds, test_ds, epochs=1)
 
-print("✅ Training loop ran successfully")
+print(" Training loop ran successfully")

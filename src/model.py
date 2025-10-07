@@ -93,5 +93,5 @@ def train_model(model: tf.keras.Model,
         callbacks=callbacks
     )
 
-    print(f"✅ Best model checkpoint saved to {save_path}")
+    print(f" Best model checkpoint saved to {save_path}")
     return history
