@@ -11,6 +11,11 @@ data_augmentation = tf.keras.Sequential([
     layers.RandomZoom(0.1),
 ], name="data_augmentation")
 
+# Convenience accessor so other modules (e.g., model building) can attach the
+# same augmentation pipeline without importing symbols directly.
+def get_augmentation_layer():
+    return data_augmentation
+
 # =========================
 # Preprocessing Functions
 # =========================
@@ -46,6 +51,17 @@ def load_data(batch_size=32):
     test_ds = prepare_datasets(test_ds, batch_size=batch_size, shuffle=False, augment=False)
 
     return train_ds, test_ds, info
+
+
+def get_datasets(batch_size=32):
+    """Compatibility wrapper expected by tests.
+
+    Returns:
+        train_ds, test_ds, class_names
+    """
+    train_ds, test_ds, info = load_data(batch_size=batch_size)
+    class_names = info.features["label"].names
+    return train_ds, test_ds, class_names
 
 # =========================
 # Debug Run
