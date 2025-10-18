@@ -2,37 +2,36 @@ import os
 import tensorflow as tf
 from tensorflow.keras import layers, models
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
-from src.data_preprocessing import get_augmentation_layer
 
 os.environ["KERAS_HOME"] = os.path.expanduser("~/.keras")
 
 
-def build_model(num_classes, save_path=None, use_augmentation=True):
-    """Build a MobileNetV2-based model for Food-101."""
+def build_model(num_classes, save_path=None, use_augmentation=False):
+    """Build a MobileNetV2-based model for Food-101.
 
-    # Base MobileNetV2 model (pretrained on ImageNet)
+    Assumes inputs are already resized to 224x224 and normalized to [0, 1]
+    in the data pipeline, so no additional Rescaling is applied here.
+    """
+
     base_model = tf.keras.applications.MobileNetV2(
         input_shape=(224, 224, 3),
         include_top=False,
         weights="imagenet"
     )
-    base_model.trainable = False  # freeze backbone initially
+    base_model.trainable = False
 
-    # Input pipeline layers
-    inputs = []
-    if use_augmentation:
-        inputs.append(get_augmentation_layer())  # 👈 only if enabled
-    inputs.append(layers.Rescaling(1. / 255))  # always normalize
-
-    # Full model
-    model = models.Sequential([
-        *inputs,
+    model_layers = []
+    # Do not add augmentation or rescaling here; keep preprocessing in the
+    # tf.data pipeline for consistency with inference.
+    model_layers.extend([
         base_model,
         layers.GlobalAveragePooling2D(),
         layers.Dense(128, activation="relu"),
         layers.Dropout(0.3),
         layers.Dense(num_classes, activation="softmax")
     ])
+
+    model = models.Sequential(model_layers)
 
     # Optionally save model structure/weights
     if save_path:
