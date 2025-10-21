@@ -1,13 +1,26 @@
-tensorflow>=2.19.0
+# === Core Deep Learning & Data ===
+tensorflow==2.15.0
 tensorflow-datasets>=4.9.3
-opencv-python>=4.12.0
 numpy>=1.26.4
+scikit-learn>=1.5.0
+pandas>=2.2.2
+
+# === Image Processing ===
+pillow>=10.3.0
+opencv-python>=4.12.0
+
+# === Visualization (optional for notebooks) ===
 matplotlib>=3.9.2
-flask>=3.0.0  # optional; remove if unused
+
+# === Backend API (FastAPI-based) ===
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.6
+
+# === Environment & HTTP Utilities ===
+python-dotenv>=1.0.1
 requests>=2.32.0
-fastapi
-uvicorn
-python-multipart
-pillow
-scikit-learn
-python-dotenv
+
+# === Development / Testing ===
+pytest>=8.3.0
+tqdm>=4.66.0
