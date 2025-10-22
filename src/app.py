@@ -1,108 +1,101 @@
-# src/app.py
+# backend/main.py
 from fastapi import FastAPI, UploadFile, File
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing import image
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from tensorflow.keras.models import load_model  # type: ignore
+from tensorflow.keras.preprocessing import image  # type: ignore
+from PIL import Image
 import numpy as np
 import io
 import os
-import json
-import tensorflow as tf
-from PIL import Image, ImageOps
-import tensorflow_datasets as tfds
-from src.api_integration import get_calories
 
+
+# Initialize FastAPI
 app = FastAPI()
 
-# Load your trained model at startup
-MODEL_PATH = "models/mobilenetv2_food101.h5"
-model = load_model(MODEL_PATH)
+# Enable CORS so React frontend can call the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # for development; in production, use ["http://localhost:3000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+# Root route
+@app.get("/")
+def read_root():
+    return {"message": "Welcome To The Food Calorie Estimator!"}
 
-def _iter_all_layers(layer):
-    # Recursively iterate through all sublayers
-    if hasattr(layer, "layers"):
-        for sub in layer.layers:
-            yield from _iter_all_layers(sub)
-    yield layer
+# Load your trained model
+#MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "mobilenetv2_food101.h5")
+#model = load_model(MODEL_PATH)
 
+# Food-101 labels (simplified example; replace with full 101 labels)
+labels = [
+    "apple_pie", "baby_back_ribs", "baklava", "beef_carpaccio",
+    "banana", "apple", "orange", "broccoli", "carrot", "strawberry"
+]
 
-def _model_has_rescaling(m) -> bool:
-    try:
-        for lyr in _iter_all_layers(m):
-            if isinstance(lyr, tf.keras.layers.Rescaling):
-                return True
-        return False
-    except Exception:
-        return False
+class FoodName(BaseModel):
+    name: str
 
+# Mock data for calories & price
+mock_data = {
+    "apple": {"calories": 52, "price": 0.5},
+    "banana": {"calories": 89, "price": 0.3},
+    "orange": {"calories": 62, "price": 0.4},
+    "broccoli": {"calories": 55, "price": 0.8},
+    "carrot": {"calories": 41, "price": 0.6},
+    "strawberry": {"calories": 33, "price": 1.0},
+    "apple_pie": {"calories": 237, "price": 2.5},
+    "baby_back_ribs": {"calories": 350, "price": 5.0},
+    "baklava": {"calories": 300, "price": 3.0},
+    "beef_carpaccio": {"calories": 150, "price": 4.0},
+}
 
-# Detect whether model already rescales (1./255) internally
-MODEL_DOES_RESCALING = _model_has_rescaling(model)
+# Helper: preprocess image for model
+#def preprocess_image(img_bytes):
+    #img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    #img = img.resize((224, 224))
+    #img_array = image.img_to_array(img)
+    #img_array = np.expand_dims(img_array, axis=0)  # add batch dimension
+    #img_array = img_array / 255.0  # normalize like training
+    #return img_array
 
-# Load class names from saved mapping if present; otherwise from TFDS
-_labels_path = os.path.join(os.path.dirname(__file__), "..", "models", "class_names.json")
-_labels_path = os.path.normpath(_labels_path)
-if os.path.exists(_labels_path):
-    with open(_labels_path, "r") as f:
-        labels = json.load(f)
-else:
-    _info = tfds.builder("food101").info
-    labels = _info.features["label"].names
+# POST endpoint for image upload
+@app.post("/upload-image")
+async def upload_image(file: UploadFile = File(...)):
+    
+    data = mock_data["apple"]
+    
+    #contents = await file.read()
+    #img_array = preprocess_image(contents)
+    #preds = model.predict(img_array)
+    #pred_idx = np.argmax(preds, axis=1)[0]
+    #pred_label = labels[pred_idx]
 
-def preprocess_image(img_bytes, normalize: bool):
-    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-    img = img.resize((224, 224))
-    img_array = image.img_to_array(img)
-    if normalize:
-        img_array = img_array / 255.0
-    img_array = np.expand_dims(img_array, axis=0)  # add batch dimension
-    return img_array
+    # Lookup calories & price using first word of label
+    #key = pred_label.split("_")[0].lower()
+    #data = food_data.get(key, {"calories": 100, "price": 1.0})
 
-
-def _tta_batch_from_bytes(img_bytes: bytes, normalize: bool):
-    # Build a small TTA batch: original, hflip, rotate +10, rotate -10
-    base = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((224, 224))
-    variants = [
-        base,
-        ImageOps.mirror(base),
-        base.rotate(10, resample=Image.BILINEAR),
-        base.rotate(-10, resample=Image.BILINEAR),
-    ]
-    arrays = []
-    for im in variants:
-        arr = image.img_to_array(im)
-        if normalize:
-            arr = arr / 255.0
-        arrays.append(arr)
-    batch = np.stack(arrays, axis=0)
-    return batch
-
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    contents = await file.read()
-
-    # Normalize only if model does not include its own Rescaling layer
-    do_norm = not MODEL_DOES_RESCALING
-
-    # Test-time augmentation for more robust predictions
-    batch = _tta_batch_from_bytes(contents, normalize=do_norm)
-    preds = model.predict(batch)
-    mean_preds = preds.mean(axis=0)
-
-    top_indices = np.argsort(mean_preds)[-3:][::-1]
-    top = [
-        {"label": labels[i], "probability": float(mean_preds[i])}
-        for i in top_indices
-    ]
-
-    pred_idx = int(top_indices[0])
-    pred_label = labels[pred_idx]
-    confidence = float(mean_preds[pred_idx])
-
-    calories = get_calories(pred_label.replace("_", " "))
     return {
-        "predicted_food": pred_label,
-        "confidence": confidence,
-        "top3": top,
-        "calories": calories,
+         "predicted_food": "apple",
+        "calories": data["calories"],
+        "price": data["price"]
+    }
+
+# Pydantic model for typed food name
+class FoodName(BaseModel):
+    name: str
+
+# POST endpoint for typed name
+@app.post("/get-info")
+async def get_info(food: FoodName):
+    #key = food.name.lower()
+    data = mock_data.get(food.name.lower(), {"calories": 100, "price": 1.0})
+    return {
+        "predicted_food": food.name,
+        "calories": data["calories"],
+        "price": data["price"]
     }
