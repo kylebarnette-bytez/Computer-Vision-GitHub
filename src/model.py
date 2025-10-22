@@ -6,13 +6,12 @@ from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLRO
 os.environ["KERAS_HOME"] = os.path.expanduser("~/.keras")
 
 
-def build_model(num_classes, save_path=None, use_augmentation=False):
+def build_model(num_classes, save_path=None, use_augmentation=True):
     """Build a MobileNetV2-based model for Food-101.
 
     Assumes inputs are already resized to 224x224 and normalized to [0, 1]
     in the data pipeline, so no additional Rescaling is applied here.
     """
-
     base_model = tf.keras.applications.MobileNetV2(
         input_shape=(224, 224, 3),
         include_top=False,
@@ -20,26 +19,30 @@ def build_model(num_classes, save_path=None, use_augmentation=False):
     )
     base_model.trainable = False
 
-    model_layers = []
-    # Do not add augmentation or rescaling here; keep preprocessing in the
-    # tf.data pipeline for consistency with inference.
-    model_layers.extend([
-        base_model,
-        layers.GlobalAveragePooling2D(),
-        layers.Dense(128, activation="relu"),
-        layers.Dropout(0.3),
-        layers.Dense(num_classes, activation="softmax")
-    ])
+    inputs = layers.Input(shape=(224, 224, 3))
+    x = inputs
 
-    model = models.Sequential(model_layers)
+    if use_augmentation:
+        x = get_augmentation_layer()(x)
+
+    # Preprocess input to match MobileNetV2 expectations
+    x = tf.keras.applications.mobilenet_v2.preprocess_input(x)
+    x = base_model(x, training=False)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(128, activation="relu")(x)
+    x = layers.Dropout(0.3)(x)
+    outputs = layers.Dense(num_classes, activation="softmax")(x)
+
+    model = tf.keras.Model(inputs, outputs, name="food101_mobilenetv2")
 
     # Optionally save model structure/weights
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         model.save(save_path)
-        print(f"✅ Model saved to {save_path}")
+        print(f" Model saved to {save_path}")
 
     return model
+
 
 
 def compile_model(model, learning_rate=1e-4):

@@ -1,0 +1,4 @@
+models/*.keras filter=lfs diff=lfs merge=lfs -text
+models/*.weights.h5 filter=lfs diff=lfs merge=lfs -text
+models/mobilenetv2_food101_20251020-104403-ft30_e03.keras filter=lfs diff=lfs merge=lfs -text
+models/mobilenetv2_food101_20251020-104403-ft30_e03.weights.h5 filter=lfs diff=lfs merge=lfs -text
