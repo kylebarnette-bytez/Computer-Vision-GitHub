@@ -4,7 +4,7 @@ from src.data_preprocessing import get_datasets
 # Load dataset
 train_ds, test_ds, class_names = get_datasets(batch_size=32)
 
-print("✅ Dataset ready for model training")
+print("Dataset ready for model training")
 print("Number of classes:", len(class_names))
 print("First 10 classes:", class_names[:10])
 

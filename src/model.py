@@ -2,12 +2,16 @@ import os
 import tensorflow as tf
 from tensorflow.keras import layers, models
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
-from src.data_preprocessing import get_augmentation_layer
 
 os.environ["KERAS_HOME"] = os.path.expanduser("~/.keras")
 
 
 def build_model(num_classes, save_path=None, use_augmentation=True):
+    """Build a MobileNetV2-based model for Food-101.
+
+    Assumes inputs are already resized to 224x224 and normalized to [0, 1]
+    in the data pipeline, so no additional Rescaling is applied here.
+    """
     base_model = tf.keras.applications.MobileNetV2(
         input_shape=(224, 224, 3),
         include_top=False,
@@ -17,9 +21,11 @@ def build_model(num_classes, save_path=None, use_augmentation=True):
 
     inputs = layers.Input(shape=(224, 224, 3))
     x = inputs
+
     if use_augmentation:
         x = get_augmentation_layer()(x)
 
+    # Preprocess input to match MobileNetV2 expectations
     x = tf.keras.applications.mobilenet_v2.preprocess_input(x)
     x = base_model(x, training=False)
     x = layers.GlobalAveragePooling2D()(x)
@@ -27,8 +33,16 @@ def build_model(num_classes, save_path=None, use_augmentation=True):
     x = layers.Dropout(0.3)(x)
     outputs = layers.Dense(num_classes, activation="softmax")(x)
 
-    model = models.Model(inputs, outputs)
+    model = tf.keras.Model(inputs, outputs, name="food101_mobilenetv2")
+
+    # Optionally save model structure/weights
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        model.save(save_path)
+        print(f" Model saved to {save_path}")
+
     return model
+
 
 
 def compile_model(model, learning_rate=1e-4):
@@ -81,5 +95,5 @@ def train_model(model: tf.keras.Model,
         callbacks=callbacks
     )
 
-    print(f"✅ Best model checkpoint saved to {save_path}")
+    print(f" Best model checkpoint saved to {save_path}")
     return history
