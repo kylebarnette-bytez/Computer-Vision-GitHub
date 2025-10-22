@@ -1,60 +1,38 @@
+# src/data_preprocessing.py
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from tensorflow.keras import layers
 
-# =========================
-# Data Augmentation
-# =========================
-data_augmentation = tf.keras.Sequential([
-    layers.RandomFlip("horizontal"),
-    layers.RandomRotation(0.1),
-    layers.RandomZoom(0.1),
-], name="data_augmentation")
+AUTOTUNE = tf.data.AUTOTUNE
 
-# =========================
-# Preprocessing Functions
-# =========================
-def preprocess_image(image, label, img_size=(224, 224)):
-    """Resize and normalize image."""
-    image = tf.image.resize(image, img_size)
-    image = tf.cast(image, tf.float32) / 255.0
-    return image, label
+def get_augmentation_layer(img_size=(224, 224)):
+    return tf.keras.Sequential([
+        layers.RandomFlip("horizontal"),
+        layers.RandomRotation(0.1),
+        layers.RandomZoom(0.1),
+    ], name="augment")
 
-def prepare_datasets(dataset, batch_size=32, shuffle=False, augment=False):
-    """Prepare dataset with shuffle, augmentation, batching, prefetching."""
+def _to_xy(example, img_size=(224, 224)):
+    img = tf.image.resize(example["image"], img_size, method="bilinear")
+    img = tf.cast(img, tf.float32)          # keep 0..255; model applies preprocess_input
+    y = tf.cast(example["label"], tf.int32) # sparse int labels
+    return img, y
+
+def _prepare(ds, batch_size, shuffle, img_size=(224, 224)):
+    ds = ds.map(lambda e: _to_xy(e, img_size), num_parallel_calls=AUTOTUNE)
     if shuffle:
-        dataset = dataset.shuffle(1000)
+        ds = ds.shuffle(10000, reshuffle_each_iteration=True)
+    ds = ds.batch(batch_size).prefetch(AUTOTUNE)
+    return ds
 
-    dataset = dataset.map(preprocess_image, num_parallel_calls=tf.data.AUTOTUNE)
-
-    if augment:
-        dataset = dataset.map(lambda x, y: (data_augmentation(x, training=True), y),
-                              num_parallel_calls=tf.data.AUTOTUNE)
-
-    dataset = dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
-    return dataset
-
-def load_data(batch_size=32):
-    """
-    Load Food-101 dataset, preprocess, and return train/test splits.
-    """
-    dataset, info = tfds.load("food101", with_info=True, as_supervised=True)
-    train_ds = dataset["train"]
-    test_ds = dataset["validation"]
-
-    train_ds = prepare_datasets(train_ds, batch_size=batch_size, shuffle=True, augment=True)
-    test_ds = prepare_datasets(test_ds, batch_size=batch_size, shuffle=False, augment=False)
-
+def load_data(batch_size=64, img_size=(224, 224)):
+    splits, info = tfds.load(
+        "food101",
+        split=["train", "validation"],
+        with_info=True,
+        as_supervised=False
+    )
+    ds_train, ds_val = splits  # <-- unpack the list of splits
+    train_ds = _prepare(ds_train, batch_size, shuffle=True,  img_size=img_size)
+    test_ds  = _prepare(ds_val,   batch_size, shuffle=False, img_size=img_size)
     return train_ds, test_ds, info
-
-# =========================
-# Debug Run
-# =========================
-if __name__ == "__main__":
-    train_ds, test_ds, info = load_data()
-    print("✅ Preprocessing pipeline ready")
-    print("Classes:", info.features["label"].names[:10])
-
-    # Take multiple batches to verify iteration
-    for i, (images, labels) in enumerate(train_ds.take(3)):
-        print(f"Batch {i + 1}: {images.shape}, {labels.shape}")
