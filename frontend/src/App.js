@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Navbar from "./navbar.js"
 import InputSection from "./InputSection";
+import Footer from "./footer";
 
 
 function App() {
@@ -15,8 +16,8 @@ function App() {
 
   // --- Upload Image handler ---
   const handleUpload = async (file) => {
-    setLoading(true);
     setResult(null);
+    setLoading(true);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -91,6 +92,7 @@ function App() {
         loading={loading}
         result={result}
         />
+        <Footer />
   </div>
   );
 }
