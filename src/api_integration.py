@@ -1,185 +1,174 @@
+# src/api_integration.py
+"""
+Edamam API integration and calorie lookup utilities.
+
+Provides multi-tiered calorie estimation with automatic fallback
+to local heuristics when the Edamam API rate limit or errors occur.
+"""
+
 import os
-from pathlib import Path
 import requests
+from pathlib import Path
 from dotenv import load_dotenv
 
 
+# ------------------------------------------------------------
+# 🔑 Credential Loader
+# ------------------------------------------------------------
 def get_edamam_credentials():
-    """Return Edamam app id/key from environment variables.
-
-    Expected variables:
-      - EDAMAM_APP_ID
-      - EDAMAM_APP_KEY
-    """
-    # Load .env once per process (safe to call multiple times)
+    """Return (app_id, app_key) from .env or environment."""
     env_path = Path(__file__).resolve().parents[1] / ".env"
     if env_path.exists():
         load_dotenv(env_path)
     return os.getenv("EDAMAM_APP_ID"), os.getenv("EDAMAM_APP_KEY")
 
 
-def _get_food_database_calories(food_name: str, app_id: str, app_key: str):
+# ------------------------------------------------------------
+# 🧩 API Helper Functions
+# ------------------------------------------------------------
+def _request_json(url, params=None, method="GET", json=None):
+    """Unified request handler with 429 detection and safe JSON parsing."""
+    try:
+        if method == "POST":
+            r = requests.post(url, params=params, json=json, timeout=10)
+        else:
+            r = requests.get(url, params=params, timeout=10)
+
+        if r.status_code == 429:
+            print("⚠️  Edamam rate limit reached.")
+            return "RATE_LIMIT"
+
+        if r.status_code != 200:
+            print(f"⚠️  Edamam request failed: {r.status_code}")
+            return None
+
+        return r.json()
+    except Exception as e:
+        print(f"⚠️  Network error: {e}")
+        return None
+
+
+def _get_food_database_calories(food_name, app_id, app_key):
     url = "https://api.edamam.com/api/food-database/v2/parser"
     params = {"app_id": app_id, "app_key": app_key, "ingr": food_name}
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code != 200:
-            return None
-        data = response.json()
-        # First try strict parsed
+    data = _request_json(url, params)
+    if data in (None, "RATE_LIMIT"):
+        return data
+    for path in [
+        ("parsed", 0, "food", "nutrients", "ENERC_KCAL"),
+        ("hints", 0, "food", "nutrients", "ENERC_KCAL"),
+    ]:
         try:
-            return data["parsed"][0]["food"]["nutrients"]["ENERC_KCAL"]
-        except (KeyError, IndexError, TypeError):
-            pass
-        # Then try hints (common for generic phrases)
-        try:
-            return data["hints"][0]["food"]["nutrients"]["ENERC_KCAL"]
-        except (KeyError, IndexError, TypeError):
-            return None
-    except Exception:
-        return None
-
-
-def _get_nutrition_data_calories(food_name: str, app_id: str, app_key: str):
-    # Nutrition Analysis API (simple): returns overall calories for an ingredient line
-    url = "https://api.edamam.com/api/nutrition-data"
-    # Prefix with a generic serving to improve parsing
-    params = {"app_id": app_id, "app_key": app_key, "ingr": f"1 serving {food_name}"}
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code != 200:
-            return None
-        data = response.json()
-        # 'calories' is a top-level field in nutrition-data API
-        return data.get("calories")
-    except Exception:
-        return None
-
-
-def _get_nutrition_data_calories_with_variants(food_name: str, app_id: str, app_key: str):
-    """Try multiple phrasing variants to improve Nutrition API matching."""
-    name = food_name.replace("_", " ").strip().lower()
-
-    # Canonical phrasing for some common items
-    canonical_map = {
-        "hamburger": ["1 hamburger sandwich", "1 cheeseburger"],
-        "hot dog": ["1 hot dog"],
-        "french fries": ["1 serving french fries"],
-        "pizza": ["1 slice pizza"],
-        "ramen": ["1 bowl ramen"],
-        "sushi": ["6 pieces sushi"],
-        "taco": ["2 tacos"],
-        "tacos": ["2 tacos"],
-        "ice cream": ["1 cup ice cream"],
-        "spaghetti bolognese": ["1 serving spaghetti bolognese"],
-        "chicken salad": ["1 serving chicken salad"],
-        "lasagna": ["1 piece meat lasagna", "1 slice lasagna", "1 serving lasagna"],
-    }
-
-    # Synonyms that help Edamam parsing
-    synonyms = {
-        "lasagna": ["lasagne", "meat lasagna", "lasagna with meat sauce", "cheese lasagna"],
-        "hamburger": ["beef burger", "cheeseburger"],
-    }
-
-    candidate_names = {name}
-    for base, syns in synonyms.items():
-        if name == base:
-            candidate_names.update(syns)
-
-    candidates: list[str] = []
-    if name in canonical_map:
-        candidates.extend(canonical_map[name])
-
-    # Generic variants across candidate names
-    measure_variants = [
-        "1 serving {}",
-        "1 piece {}",
-        "1 slice {}",
-        "1 bowl {}",
-        "1 cup {}",
-        "1 {}",
-        "{}",
-        "1 serving of {}",
-        "1 piece of {}",
-        "1 slice of {}",
-    ]
-    for n in candidate_names:
-        for tmpl in measure_variants:
-            candidates.append(tmpl.format(n))
-
-    # Deduplicate while preserving order
-    seen = set()
-    unique_candidates = []
-    for c in candidates:
-        if c not in seen:
-            seen.add(c)
-            unique_candidates.append(c)
-
-    for phrase in unique_candidates:
-        cals = _get_nutrition_data_calories(phrase, app_id, app_key)
-        if isinstance(cals, (int, float)) and cals > 0:
-            return cals
-    return None
-
-
-def _get_nutrition_details_calories(food_name: str, app_id: str, app_key: str):
-    """Nutrition Details API via POST with ingredient list, more robust parsing."""
-    url = f"https://api.edamam.com/api/nutrition-details?app_id={app_id}&app_key={app_key}"
-    name = food_name.replace("_", " ").strip()
-    candidates = [
-        f"1 serving {name}",
-        f"1 {name}",
-        name,
-    ]
-    headers = {"Content-Type": "application/json"}
-    for phrase in candidates:
-        try:
-            payload = {"ingr": [phrase]}
-            response = requests.post(url, json=payload, headers=headers, timeout=12)
-            if response.status_code != 200:
-                continue
-            data = response.json()
-            cals = data.get("calories")
-            if isinstance(cals, (int, float)) and cals > 0:
-                return cals
+            d = data
+            for p in path:
+                d = d[p]
+            return d
         except Exception:
             continue
     return None
 
 
+def _get_nutrition_data_calories(food_name, app_id, app_key):
+    url = "https://api.edamam.com/api/nutrition-data"
+    params = {"app_id": app_id, "app_key": app_key, "ingr": f"1 serving {food_name}"}
+    data = _request_json(url, params)
+    if data in (None, "RATE_LIMIT"):
+        return data
+    return data.get("calories")
+
+
+def _get_nutrition_data_calories_with_variants(food_name, app_id, app_key):
+    """Try multiple phrasing variants for better hit rate."""
+    name = food_name.replace("_", " ").strip().lower()
+    canonical_map = {
+        "pizza": ["1 slice pizza"],
+        "ramen": ["1 bowl ramen"],
+        "sushi": ["6 pieces sushi"],
+        "taco": ["2 tacos"],
+        "ice cream": ["1 cup ice cream"],
+        "spaghetti bolognese": ["1 serving spaghetti bolognese"],
+    }
+
+    candidates = [f"1 serving {name}", name]
+    if name in canonical_map:
+        candidates += canonical_map[name]
+
+    for phrase in candidates:
+        cals = _get_nutrition_data_calories(phrase, app_id, app_key)
+        if cals == "RATE_LIMIT":
+            return "RATE_LIMIT"
+        if isinstance(cals, (int, float)) and cals > 0:
+            print(f"✅  Found via nutrition-data: {phrase} → {cals} kcal")
+            return cals
+    return None
+
+
+def _get_nutrition_details_calories(food_name, app_id, app_key):
+    """Use Nutrition Details API (POST)."""
+    url = f"https://api.edamam.com/api/nutrition-details?app_id={app_id}&app_key={app_key}"
+    headers = {"Content-Type": "application/json"}
+    name = food_name.replace("_", " ").strip()
+    for phrase in [f"1 serving {name}", f"1 {name}", name]:
+        data = _request_json(url, method="POST", json={"ingr": [phrase]})
+        if data == "RATE_LIMIT":
+            return "RATE_LIMIT"
+        if data and isinstance(data.get("calories"), (int, float)) and data["calories"] > 0:
+            print(f"✅  Found via nutrition-details: {phrase} → {data['calories']} kcal")
+            return data["calories"]
+    return None
+
+
+# ------------------------------------------------------------
+# 🍽️  Main Public Function
+# ------------------------------------------------------------
 def get_calories(food_name: str):
     app_id, app_key = get_edamam_credentials()
     if not app_id or not app_key:
-        return None
+        print("⚠️  Missing Edamam credentials.")
+        return 250  # generic fallback
 
-    # Prefer Nutrition Analysis (variants + details) for broader access; fall back to Food DB
-    calories = _get_nutrition_data_calories_with_variants(food_name, app_id, app_key)
-    if calories is None:
-        calories = _get_nutrition_details_calories(food_name, app_id, app_key)
-    if calories is None:
-        calories = _get_food_database_calories(food_name, app_id, app_key)
-    if calories is not None:
-        return calories
+    # Primary sequence of lookups
+    for fn in (
+        _get_nutrition_data_calories_with_variants,
+        _get_nutrition_details_calories,
+        _get_food_database_calories,
+    ):
+        cals = fn(food_name, app_id, app_key)
+        if cals == "RATE_LIMIT":
+            print("⚠️  Rate-limit fallback engaged.")
+            return _local_fallback(food_name)
+        if isinstance(cals, (int, float)) and cals > 0:
+            return round(cals)
 
-    # Last-resort heuristic fallback for common dishes (approximate per serving)
+    # All failed → fallback
+    print("⚠️  No valid API result, using heuristic fallback.")
+    return _local_fallback(food_name)
+
+
+# ------------------------------------------------------------
+# 🧭 Local heuristic fallback
+# ------------------------------------------------------------
+def _local_fallback(food_name: str):
     fallback = {
         "hamburger": 354,
-        "pizza": 285,              # per slice
+        "pizza": 285,
         "hot dog": 151,
-        "lasagna": 350,            # per piece
+        "lasagna": 350,
         "french fries": 365,
-        "sushi": 300,              # assorted pieces
+        "sushi": 300,
         "ramen": 500,
         "taco": 170,
         "spaghetti bolognese": 350,
         "ice cream": 273,
         "chicken salad": 350,
+        "peking duck": 335,
     }
-    key = food_name.replace("_", " ").strip().lower()
-    return fallback.get(key)
+    return fallback.get(food_name.replace("_", " ").lower(), 250)
 
 
-# Backward-compatible alias for predict utilities that may import query_calories
+# ------------------------------------------------------------
+# Backward-compat alias
+# ------------------------------------------------------------
 def query_calories(food_name: str):
+    """Compatibility alias for legacy imports."""
     return get_calories(food_name)

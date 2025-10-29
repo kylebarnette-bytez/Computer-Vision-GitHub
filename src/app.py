@@ -1,135 +1,107 @@
 # src/app.py
-# ------------------------------------------------------------
-# Food Calorie Estimator Backend (FastAPI + TensorFlow)
-# ------------------------------------------------------------
-from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from tensorflow.keras.models import load_model  # type: ignore
-from tensorflow.keras.preprocessing import image  # type: ignore
-from PIL import Image
-import numpy as np
-import io
+"""
+Main FastAPI backend for the Food Calorie Estimator.
+Handles image uploads, food recognition, and calorie estimation.
+"""
+
 import os
+import numpy as np
+import tensorflow as tf
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+from io import BytesIO
+from PIL import Image
 
-# ------------------------------------------------------------
-# Initialize FastAPI
-# ------------------------------------------------------------
-app = FastAPI(title="Food Calorie Estimator")
+from src.api_integration import get_calories  #
 
-# ------------------------------------------------------------
-# CORS so frontend (React) can talk to backend
-# ------------------------------------------------------------
+# ====================================
+#  CONFIGURATION & INITIALIZATION
+# ====================================
+load_dotenv()
+
+app = FastAPI(
+    title="Food Recognition API",
+    description="Recognize foods and estimate calories using MobileNetV2 + Edamam API",
+    version="2.0",
+)
+
+# Allow frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ------------------------------------------------------------
-# Root route (test)
-# ------------------------------------------------------------
+# Paths
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "../models/mobilenetv2_food101_after55.keras")
+LABELS_FILE = os.path.join(os.path.dirname(__file__), "../models/food101_classes.txt")
+
+
+# ====================================
+# ✅ LOAD MODEL & LABELS
+# ====================================
+print(f"🔄 Loading model from: {MODEL_PATH}")
+model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+print("✅ Model loaded and compiled successfully!")
+
+if os.path.exists(LABELS_FILE):
+    with open(LABELS_FILE, "r") as f:
+        LABELS = [line.strip() for line in f.readlines() if line.strip()]
+    print(f"✅ Loaded {len(LABELS)} Food-101 class names locally.")
+else:
+    raise FileNotFoundError(f"⚠️ Missing class label file: {LABELS_FILE}")
+
+
+# ====================================
+# ✅ HELPER FUNCTION — Prediction
+# ====================================
+def predict_food(image_bytes: bytes) -> str:
+    """Run inference on an uploaded image and return the predicted food label."""
+    try:
+        image = Image.open(BytesIO(image_bytes)).convert("RGB")
+        model_input_shape = model.input_shape[1:3]
+        image = image.resize(model_input_shape)
+        img_array = np.expand_dims(np.array(image, dtype=np.float32), axis=0)
+        img_array = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
+
+        preds = model.predict(img_array)
+        idx = int(np.argmax(preds))
+        predicted_food = LABELS[idx]
+        confidence = float(np.max(preds)) * 100
+        print(f"🔍 Prediction index={idx} → {predicted_food} ({confidence:.2f}%)")
+        return predicted_food
+    except Exception as e:
+        print(f"❌ Prediction error: {e}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
+
+
+# ====================================
+# ✅ ROUTES
+# ====================================
 @app.get("/")
-def read_root():
-    return {"message": "Welcome To The Food Calorie Estimator!"}
+def root():
+    return {"message": "🍽️ Food Recognition API is running successfully!"}
 
-# ------------------------------------------------------------
-# Load trained model
-# ------------------------------------------------------------
-MODEL_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "models",
-    "mobilenetv2_food101_20251020-104403-ft30_e03.keras"
-)
 
-try:
-    model = load_model(MODEL_PATH)
-    model_loaded = True
-    print(f"✅ Model loaded successfully from {MODEL_PATH}")
-except Exception as e:
-    model = None
-    model_loaded = False
-    print(f"⚠️ Could not load model: {e}")
-
-# ------------------------------------------------------------
-# Food-101 label subset (replace with full set if available)
-# ------------------------------------------------------------
-labels = [
-    "apple_pie", "baby_back_ribs", "baklava", "beef_carpaccio",
-    "banana", "apple", "orange", "broccoli", "carrot", "strawberry"
-]
-
-# ------------------------------------------------------------
-# Mock calorie/price database
-# ------------------------------------------------------------
-food_data = {
-    "apple": {"calories": 52, "price": 0.5},
-    "banana": {"calories": 89, "price": 0.3},
-    "orange": {"calories": 62, "price": 0.4},
-    "broccoli": {"calories": 55, "price": 0.8},
-    "carrot": {"calories": 41, "price": 0.6},
-    "strawberry": {"calories": 33, "price": 1.0},
-    "apple_pie": {"calories": 237, "price": 2.5},
-    "baby_back_ribs": {"calories": 350, "price": 5.0},
-    "baklava": {"calories": 300, "price": 3.0},
-    "beef_carpaccio": {"calories": 150, "price": 4.0},
-}
-
-# ------------------------------------------------------------
-# Pydantic model for typed food input
-# ------------------------------------------------------------
-class FoodName(BaseModel):
-    name: str
-
-# ------------------------------------------------------------
-# Image preprocessing helper
-# ------------------------------------------------------------
-def preprocess_image(img_bytes):
-    """Preprocess image bytes to model input format."""
-    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-    img = img.resize((224, 224))  # MobileNetV2 input size
-    img_array = image.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0)  # batch dimension
-    img_array = img_array / 255.0  # normalize
-    return img_array
-
-# ------------------------------------------------------------
-# POST: upload image and get prediction
-# ------------------------------------------------------------
 @app.post("/upload-image")
 async def upload_image(file: UploadFile = File(...)):
-    contents = await file.read()
+    """Upload an image → return food prediction + calorie info."""
+    try:
+        contents = await file.read()
+        predicted_food = predict_food(contents)
+        calories = get_calories(predicted_food)  # ✅ Unified lookup
 
-    if model_loaded and model is not None:
-        # Preprocess and predict
-        img_array = preprocess_image(contents)
-        preds = model.predict(img_array)
-        pred_idx = np.argmax(preds, axis=1)[0]
-        pred_label = labels[pred_idx % len(labels)]  # guard if labels shorter
-    else:
-        pred_label = "apple"  # fallback if model not loaded
+        # Optional price heuristic (can adjust later)
+        price = round(calories * 0.015, 2)
 
-    key = pred_label.split("_")[0].lower()
-    data = food_data.get(key, {"calories": 100, "price": 1.0})
+        return {
+            "predicted_food": predicted_food,
+            "calories": calories,
+            "price": price
+        }
 
-    return {
-        "predicted_food": pred_label,
-        "calories": data["calories"],
-        "price": data["price"]
-    }
-
-# ------------------------------------------------------------
-# POST: get calories/price for typed food name
-# ------------------------------------------------------------
-@app.post("/get-info")
-async def get_info(food: FoodName):
-    key = food.name.lower()
-    data = food_data.get(key, {"calories": 100, "price": 1.0})
-    return {
-        "predicted_food": food.name,
-        "calories": data["calories"],
-        "price": data["price"]
-    }
+    except Exception as e:
+        print(f"❌ Upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Server error: {e}")
