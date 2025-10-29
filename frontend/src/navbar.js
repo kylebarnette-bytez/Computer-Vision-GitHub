@@ -20,9 +20,13 @@ const Navbar = () => {
     };
 
     const logoStyle = {
-        height: "50px",
+        height: "80px",
         width: "auto",
         cursor: "pointer",
+        marginTop: "10px",
+        paddingTop: "50px",
+        marginLeft: "15px",
+      
     };
 
     const navLinkStyle ={

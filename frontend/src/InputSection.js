@@ -16,13 +16,13 @@ function InputSection({ onUpload, onType, onCamera, loading, result })
         backgroundColor: "#171c34ff",       
         width: "100%",            
         boxSizing: "border-box",
-        padding: "2rem",
+        padding: "4rem",
     };
 
     const headingStyle = {
         fontSize: "2rem",
-        color: "#1e628a",
-        marginTop : "3rem",
+        color: "#88b2c8ff",
+        marginTop : "2rem",
         marginBottom: "2rem",
         maxWidth: "600px"
     };
@@ -123,6 +123,7 @@ function InputSection({ onUpload, onType, onCamera, loading, result })
       {/* Result box below buttons */}
       {result && (
         <div style={resultBoxStyle}>
+          <p>Name: {result.predicted_food}</p>
           <p>Calories: {result.calories}</p>
           <p>Price: ${result.price}</p>
             </div>
