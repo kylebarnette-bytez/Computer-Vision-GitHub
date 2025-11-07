@@ -192,7 +192,7 @@ def fine_tune_model(model: tf.keras.Model,
 # ------------------------------------------------------------
 def summarize_model(model: tf.keras.Model):
     """Print a concise model summary."""
-    print("\n🧩 Model Summary:")
+    print("\n Model Summary:")
     model.summary(line_length=100)
 
 
@@ -201,4 +201,4 @@ if __name__ == "__main__":
     m = build_model(num_classes=101)
     compile_model(m)
     summarize_model(m)
-    print("✅ Model built successfully.")
+    print(" Model built successfully.")

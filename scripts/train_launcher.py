@@ -69,7 +69,7 @@
 #     save_path="models/mobilenetv2_food101_tfds_finetuned_e05.keras"
 # )
 #
-# print("\n✅ Training complete! Models saved in /models/")
+# print("\n Training complete! Models saved in /models/")
 
 """
 Resume fine-tuning MobileNetV2 on Food-101 from existing checkpoint.
@@ -80,7 +80,7 @@ import os
 import sys
 
 # ============================================================
-# 0️⃣ Environment setup for stability on M1
+# 0⃣ Environment setup for stability on M1
 # ============================================================
 os.environ["TF_METAL_ENABLE"] = "0"
 os.environ["APPLE_ENABLE_METAL"] = "NO"
@@ -101,7 +101,7 @@ IMG_SIZE = (160, 160)
 BATCH_SIZE = 8
 AUTOTUNE = tf.data.AUTOTUNE
 
-print("📦 Loading Food-101 dataset...")
+print(" Loading Food-101 dataset...")
 (ds_train, ds_val), ds_info = tfds.load(
     "food101",
     split=["train", "validation"],
@@ -113,7 +113,7 @@ NUM_CLASSES = ds_info.features["label"].num_classes
 def preprocess(image, label):
     image = tf.image.resize(image, IMG_SIZE)
     image = preprocess_input(image)
-    label = tf.one_hot(label, depth=NUM_CLASSES)   # 👈 restore one-hot encoding
+    label = tf.one_hot(label, depth=NUM_CLASSES)   # restore one-hot encoding
     return image, label
 
 
@@ -135,7 +135,7 @@ val_ds = (
 # 2️⃣ Load the existing model at 5 epochs
 # ============================================================
 MODEL_PATH = "models/mobilenetv2_food101_tfds_finetuned_e05.keras"
-print(f"🧠 Loading checkpoint from: {MODEL_PATH}")
+print(f" Loading checkpoint from: {MODEL_PATH}")
 model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 # ============================================================
@@ -180,4 +180,4 @@ history = model.fit(
 # ============================================================
 SAVE_PATH = "models/mobilenetv2_food101_after10.keras"
 model.save(SAVE_PATH)
-print(f"✅ Fine-tuning complete — saved to {SAVE_PATH}")
+print(f" Fine-tuning complete — saved to {SAVE_PATH}")

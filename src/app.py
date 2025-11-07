@@ -35,27 +35,27 @@ app.add_middleware(
 )
 
 # Paths
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "../models/mobilenetv2_food101_after55.keras")
-LABELS_FILE = os.path.join(os.path.dirname(__file__), "../models/food101_classes.txt")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "models/mobilenetv2_food101_clean.h5")
+LABELS_FILE = os.path.join(os.path.dirname(__file__), "models/food101_classes.txt")
 
 
 # ====================================
-# ✅ LOAD MODEL & LABELS
+#  LOAD MODEL & LABELS
 # ====================================
-print(f"🔄 Loading model from: {MODEL_PATH}")
+print(f" Loading model from: {MODEL_PATH}")
 model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-print("✅ Model loaded and compiled successfully!")
+print(" Model loaded and compiled successfully!")
 
 if os.path.exists(LABELS_FILE):
     with open(LABELS_FILE, "r") as f:
         LABELS = [line.strip() for line in f.readlines() if line.strip()]
-    print(f"✅ Loaded {len(LABELS)} Food-101 class names locally.")
+    print(f" Loaded {len(LABELS)} Food-101 class names locally.")
 else:
     raise FileNotFoundError(f"⚠️ Missing class label file: {LABELS_FILE}")
 
 
 # ====================================
-# ✅ HELPER FUNCTION — Prediction
+#  HELPER FUNCTION — Prediction
 # ====================================
 def predict_food(image_bytes: bytes) -> str:
     """Run inference on an uploaded image and return the predicted food label."""
@@ -78,7 +78,7 @@ def predict_food(image_bytes: bytes) -> str:
 
 
 # ====================================
-# ✅ ROUTES
+#  ROUTES
 # ====================================
 @app.get("/")
 def root():
@@ -91,7 +91,7 @@ async def upload_image(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         predicted_food = predict_food(contents)
-        calories = get_calories(predicted_food)  # ✅ Unified lookup
+        calories = get_calories(predicted_food)  #  Unified lookup
 
         # Optional price heuristic (can adjust later)
         price = round(calories * 0.015, 2)
@@ -103,5 +103,5 @@ async def upload_image(file: UploadFile = File(...)):
         }
 
     except Exception as e:
-        print(f"❌ Upload error: {e}")
+        print(f" Upload error: {e}")
         raise HTTPException(status_code=500, detail=f"Server error: {e}")

@@ -11,17 +11,17 @@ import os
 app = FastAPI()
 
 # ============================================================
-# 🔹 1️⃣ Load your NEW fine-tuned model
+# ⃣ Load your NEW fine-tuned model
 # ============================================================
 # Make sure this file exists (check models/ folder)
-MODEL_PATH = "models/mobilenetv2_food101_after55.keras"
+MODEL_PATH = "models/mobilenetv2_food101_clean.h5"
 model = load_model(MODEL_PATH, compile=False)
 
 # Automatically detect input size (e.g., (160,160))
 MODEL_INPUT_SHAPE = model.input_shape[1:3]
 
 # ============================================================
-# 🔹 2️⃣ Load class names
+# Load class names
 # ============================================================
 with open("src/class_names.txt") as f:
     class_names = [line.strip() for line in f]
@@ -39,18 +39,18 @@ label_map = {
 }
 
 # ============================================================
-# 🔹 3️⃣ Preprocess uploaded image
+#  Preprocess uploaded image
 # ============================================================
 def prepare_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     img = np.array(img)
-    # ✅ Resize to model's expected input (auto-detected)
+    #  Resize to model's expected input (auto-detected)
     img = cv2.resize(img, MODEL_INPUT_SHAPE)
     img = preprocess_input(img)  # same normalization as training
     return np.expand_dims(img, axis=0)
 
 # ============================================================
-# 🔹 4️⃣ Prediction route
+#  Prediction route
 # ============================================================
 @app.post("/predict/")
 async def predict(file: UploadFile = File(...)):
@@ -83,7 +83,7 @@ async def predict(file: UploadFile = File(...)):
     food_name = get_best_food_match(top_labels)
 
     # ============================================================
-    # 🔹 Fetch calories from Edamam (with fallback)
+    #  Fetch calories from Edamam (with fallback)
     # ============================================================
     params = {"ingr": food_name, "app_id": app_id, "app_key": app_key}
     calories = None
@@ -98,12 +98,12 @@ async def predict(file: UploadFile = File(...)):
         elif "hints" in data and data["hints"]:
             calories = data["hints"][0]["food"]["nutrients"].get("ENERC_KCAL", None)
         else:
-            print(f"⚠️ No nutrition data found for {food_name}")
+            print(f" No nutrition data found for {food_name}")
 
     except (requests.exceptions.RequestException, ValueError) as e:
-        print(f"⚠️ Edamam API error for {food_name}: {e}")
+        print(f"️ Edamam API error for {food_name}: {e}")
 
-    # 🔸 Fallback if API fails or returns None
+    #  Fallback if API fails or returns None
     if calories is None:
         calories = 0.0  # or use a string "N/A"
 

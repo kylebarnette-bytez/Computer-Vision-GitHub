@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 
 # ------------------------------------------------------------
-# 🔑 Credential Loader
+# Credential Loader
 # ------------------------------------------------------------
 def get_edamam_credentials():
     """Return (app_id, app_key) from .env or environment."""
@@ -24,7 +24,7 @@ def get_edamam_credentials():
 
 
 # ------------------------------------------------------------
-# 🧩 API Helper Functions
+# API Helper Functions
 # ------------------------------------------------------------
 def _request_json(url, params=None, method="GET", json=None):
     """Unified request handler with 429 detection and safe JSON parsing."""
@@ -35,16 +35,16 @@ def _request_json(url, params=None, method="GET", json=None):
             r = requests.get(url, params=params, timeout=10)
 
         if r.status_code == 429:
-            print("⚠️  Edamam rate limit reached.")
+            print("️  Edamam rate limit reached.")
             return "RATE_LIMIT"
 
         if r.status_code != 200:
-            print(f"⚠️  Edamam request failed: {r.status_code}")
+            print(f"️  Edamam request failed: {r.status_code}")
             return None
 
         return r.json()
     except Exception as e:
-        print(f"⚠️  Network error: {e}")
+        print(f"  Network error: {e}")
         return None
 
 
@@ -98,7 +98,7 @@ def _get_nutrition_data_calories_with_variants(food_name, app_id, app_key):
         if cals == "RATE_LIMIT":
             return "RATE_LIMIT"
         if isinstance(cals, (int, float)) and cals > 0:
-            print(f"✅  Found via nutrition-data: {phrase} → {cals} kcal")
+            print(f"  Found via nutrition-data: {phrase} → {cals} kcal")
             return cals
     return None
 
@@ -113,7 +113,7 @@ def _get_nutrition_details_calories(food_name, app_id, app_key):
         if data == "RATE_LIMIT":
             return "RATE_LIMIT"
         if data and isinstance(data.get("calories"), (int, float)) and data["calories"] > 0:
-            print(f"✅  Found via nutrition-details: {phrase} → {data['calories']} kcal")
+            print(f"  Found via nutrition-details: {phrase} → {data['calories']} kcal")
             return data["calories"]
     return None
 
@@ -124,7 +124,7 @@ def _get_nutrition_details_calories(food_name, app_id, app_key):
 def get_calories(food_name: str):
     app_id, app_key = get_edamam_credentials()
     if not app_id or not app_key:
-        print("⚠️  Missing Edamam credentials.")
+        print("  Missing Edamam credentials.")
         return 250  # generic fallback
 
     # Primary sequence of lookups
@@ -135,18 +135,18 @@ def get_calories(food_name: str):
     ):
         cals = fn(food_name, app_id, app_key)
         if cals == "RATE_LIMIT":
-            print("⚠️  Rate-limit fallback engaged.")
+            print("️  Rate-limit fallback engaged.")
             return _local_fallback(food_name)
         if isinstance(cals, (int, float)) and cals > 0:
             return round(cals)
 
     # All failed → fallback
-    print("⚠️  No valid API result, using heuristic fallback.")
+    print("  No valid API result, using heuristic fallback.")
     return _local_fallback(food_name)
 
 
 # ------------------------------------------------------------
-# 🧭 Local heuristic fallback
+#  Local heuristic fallback
 # ------------------------------------------------------------
 def _local_fallback(food_name: str):
     fallback = {

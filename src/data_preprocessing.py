@@ -67,7 +67,7 @@ def load_data(batch_size=8, img_size=(160, 160), shuffle_buffer=256, limit_sampl
     Load and prepare the Food-101 dataset (TFDS) with low-memory defaults.
     Returns (train_ds, val_ds, info).
     """
-    print(f"📦 Loading Food-101 dataset from TensorFlow Datasets at size {img_size}...")
+    print(f" Loading Food-101 dataset from TensorFlow Datasets at size {img_size}...")
     (train_raw, val_raw), info = tfds.load(
         "food101",
         split=["train", "validation"],
@@ -96,9 +96,9 @@ def load_data(batch_size=8, img_size=(160, 160), shuffle_buffer=256, limit_sampl
     if limit_samples:
         train_ds = train_ds.take(2000)
         val_ds   = val_ds.take(500)
-        print("⚙️ Using limited dataset sample for quick testing (2000/500).")
+        print("️ Using limited dataset sample for quick testing (2000/500).")
 
-    print(f"✅ TFDS Food-101 ready: {info.splits['train'].num_examples} training images, "
+    print(f" TFDS Food-101 ready: {info.splits['train'].num_examples} training images, "
           f"{info.splits['validation'].num_examples} validation images.")
     return train_ds, val_ds, info
 
