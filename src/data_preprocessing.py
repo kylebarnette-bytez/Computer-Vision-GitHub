@@ -5,50 +5,95 @@ from tensorflow.keras import layers
 
 AUTOTUNE = tf.data.AUTOTUNE
 
-# Convenience accessor so other modules (e.g., model building) can attach the
-# same augmentation pipeline without importing symbols directly.
-def get_augmentation_layer():
-    return data_augmentation
+# =====================================================
+# 🌱 Data Augmentation (for training only)
+# =====================================================
+def get_augmentation_layer(strength="medium"):
+    """Return a tuned data augmentation layer for Food-101."""
+    if strength == "strong":
+        return tf.keras.Sequential([
+            layers.RandomFlip("horizontal"),
+            layers.RandomRotation(0.2),
+            layers.RandomZoom(0.2),
+            layers.RandomContrast(0.2),
+            layers.RandomBrightness(0.15)
+        ], name="augmentation_strong")
+    else:
+        return tf.keras.Sequential([
+            layers.RandomFlip("horizontal"),
+            layers.RandomRotation(0.1),
+            layers.RandomZoom(0.15),
+            layers.RandomContrast(0.1),
+        ], name="augmentation_medium")
 
-# =========================
-# Preprocessing Functions
-# =========================
-def preprocess_image(image, label, img_size=(224, 224)):
-    """Resize and normalize image."""
-    image = tf.image.resize(image, img_size)
-    image = tf.cast(image, tf.float32) / 255.0
-    return image, label
-
-def _to_xy(example, img_size=(224, 224)):
-    img = tf.image.resize(example["image"], img_size, method="bilinear")
-    img = tf.cast(img, tf.float32)          # keep 0..255; model applies preprocess_input
-    y = tf.cast(example["label"], tf.int32) # sparse int labels
-    return img, y
-
-    train_ds = prepare_datasets(train_ds, batch_size=batch_size, shuffle=True, augment=True)
-    test_ds = prepare_datasets(test_ds, batch_size=batch_size, shuffle=False, augment=False)
-
-    return train_ds, test_ds, info
-
-
-def get_datasets(batch_size=32):
-    """Compatibility wrapper expected by tests.
-
-    Returns:
-        train_ds, test_ds, class_names
+# =====================================================
+# 🧩 Preprocessing
+# =====================================================
+def preprocess_image(image, label=None, img_size=(224, 224)):
     """
-    train_ds, test_ds, info = load_data(batch_size=batch_size)
-    class_names = info.features["label"].names
-    return train_ds, test_ds, class_names
+    Resize & preprocess image for MobileNetV2.
+    If label is None, return only image (for inference compatibility).
+    """
+    image = tf.image.resize(image, img_size)
+    image = tf.keras.applications.mobilenet_v2.preprocess_input(image)
+    if label is not None:
+        return image, tf.cast(label, tf.int32)
+    return image
 
-# =========================
-# Debug Run
-# =========================
+def _preprocess_example(example, img_size):
+    """Convert TFDS example dict → (image, label)."""
+    return preprocess_image(example["image"], example["label"], img_size)
+
+# =====================================================
+# 📦 Dataset Loader
+# =====================================================
+def load_data(batch_size=32, img_size=(224, 224), limit_samples=False):
+    """Load Food-101 with preprocessing and optional sample limit."""
+    print(f"📥 Loading Food-101 dataset at {img_size}...")
+    (train_raw, val_raw), info = tfds.load(
+        "food101",
+        split=["train", "validation"],
+        shuffle_files=True,
+        with_info=True,
+        as_supervised=False,
+    )
+
+    # Map preprocessing + shuffle/batch/prefetch
+    train_ds = (
+        train_raw
+        .map(lambda ex: _preprocess_example(ex, img_size), num_parallel_calls=AUTOTUNE)
+        .shuffle(512)
+        .batch(batch_size)
+        .prefetch(AUTOTUNE)
+    )
+    val_ds = (
+        val_raw
+        .map(lambda ex: _preprocess_example(ex, img_size), num_parallel_calls=AUTOTUNE)
+        .batch(batch_size)
+        .prefetch(AUTOTUNE)
+    )
+
+    if limit_samples:
+        train_ds = train_ds.take(2000)
+        val_ds = val_ds.take(500)
+        print("⚠️ Using limited dataset sample for quick tests (2000 train / 500 val).")
+
+    print(f"✅ Loaded Food-101: {info.splits['train'].num_examples} training, "
+          f"{info.splits['validation'].num_examples} validation images.")
+    return train_ds, val_ds, info
+
+# =====================================================
+# 🧪 Legacy Wrapper
+# =====================================================
+def get_datasets(batch_size=32):
+    train_ds, val_ds, info = load_data(batch_size=batch_size)
+    return train_ds, val_ds, info.features["label"].names
+
+# =====================================================
+# 🧾 Debug
+# =====================================================
 if __name__ == "__main__":
-    train_ds, test_ds, info = load_data()
-    print(" Preprocessing pipeline ready")
-    print("Classes:", info.features["label"].names[:10])
-
-    # Take multiple batches to verify iteration
-    for i, (images, labels) in enumerate(train_ds.take(3)):
-        print(f"Batch {i + 1}: {images.shape}, {labels.shape}")
+    train_ds, val_ds, info = load_data(limit_samples=True)
+    print("Classes:", info.features["label"].names[:5])
+    for i, (imgs, labels) in enumerate(train_ds.take(1)):
+        print(f"Batch {i+1}: {imgs.shape}, {labels.numpy()[:5]}")
